@@ -32,13 +32,13 @@ pip install pyautogui PyQt5
 ### Running the Program
 To start the cat, simply run:
 ```sh
-python onekoPy.py
+python main.py
 ```
 
 If you want to compile it as an executable (optional):
 ```sh
 pip install pyinstaller
-pyinstaller --onefile --noconsole onekoPy.py
+pyinstaller --onefile --add-data "oneko.gif;." --add-data "gatito.ico;." --icon=gatito.ico main.py --windowed
 ```
 
 ## Usage
