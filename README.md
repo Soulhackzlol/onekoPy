@@ -18,6 +18,9 @@ onekoPy is a Python-based implementation of the classic 'Oneko' desktop cat that
 - **Draggable**: In certain modes, you can manually move the cat.
 - **Idle Animations**: The cat occasionally performs idle actions.
 
+## Running without bulding it yourself
+Go to [Releases](https://github.com/Soulhackzlol/onekoPy/releases/tag/Release) and download the latest version. And just... run it!
+
 ## Installation
 
 ### Requirements
