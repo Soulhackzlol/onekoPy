@@ -8,28 +8,62 @@
 \____/_/ /_/\___/_/|_|\____/_/    \__, /  
                                  /____/    
 ```                                               
-onekoPy is a Python-based implementation of the classic 'Oneko' desktop cat that follows your mouse pointer. It includes additional features and modes for more interaction.
+# onekoPy 🐱  
+*A Python-based virtual desktop cat that follows your cursor—with extra features and modes for more interactivity!*
 
-## Features
-- **Follow Mode**: The cat follows your mouse cursor across the screen.
-- **Wait Mode**: The cat stays idle but can be dragged.
-- **Chill Mode**: The cat remains still but occasionally moves slightly (needs a rework tbh).
-- **System Tray Menu**: Allows you to switch between modes easily.
-- **Draggable**: In certain modes, you can manually move the cat.
-- **Idle Animations**: The cat occasionally performs idle actions.
+The latest update introduces:  
+✅ A **draggable feeder** in **Chill Mode**  
+✅ An **improved eating cycle** where the cat sleeps until every 5 minutes when it moves, "eats," and returns to its spot  
 
-## Running without bulding it yourself
-Go to [Releases](https://github.com/Soulhackzlol/onekoPy/releases/tag/Release) and download the latest version. And just... run it!
+---
 
-## Installation
+## 🎮 Features
 
-### Requirements
+### 🏃 Follow Mode
+- The cat follows your mouse cursor across the screen.
+
+### 😴 Wait Mode
+- The cat stays idle (in a sleeping state) but can be repositioned via drag-and-drop.
+
+### 💤 Chill Mode
+- The cat remains in a **sleeping pose** without random movement.
+- Every **5 minutes**, an **eating cycle** is triggered:
+  1. The cat moves smoothly to a **draggable feeder**.
+  2. Performs an **eating animation** for ~5 seconds.
+  3. Returns **precisely** to its original sleeping spot.
+
+### 🎛️ System Tray Menu
+- Easily switch between modes or exit the application via a tray icon.
+
+### 🖱️ Draggable Elements
+- In **Wait** and **Chill** modes, you can **manually reposition** the cat (and the feeder in Chill mode).
+
+### 🎭 Idle Animations
+- The cat occasionally performs idle animations in **Follow Mode**.
+
+### 🛠️ Enhanced Debug Logging
+- Optional logging helps troubleshoot behavior and verify resource loading.
+
+### 🖥️ PyInstaller Compatibility
+- Designed to be compiled into a **standalone executable for Windows**.
+
+---
+
+## 📥 Download & Run (No Installation Required)  
+1. Go to **[Releases](https://github.com/Soulhackzlol/onekoPy/releases)**.  
+2. Download the **latest version**.  
+3. **Run it!** 🎉  
+
+---
+
+## 🔧 Installation (For Developers)
+### 🔹 Requirements
 Ensure you have Python 3 installed along with the following dependencies:
 ```sh
 pip install pyautogui PyQt5
 ```
 
-### Running the Program
+### 🚀 Running the Program
 To start the cat, simply run:
 ```sh
 python main.py
@@ -38,20 +72,25 @@ python main.py
 If you want to compile it as an executable (optional):
 ```sh
 pip install pyinstaller
-pyinstaller --onefile --add-data "oneko.gif;." --add-data "gatito.ico;." --icon=gatito.ico main.py --windowed
+pyinstaller --onefile --windowed --add-data "oneko.gif;." --add-data "gatito.ico;." --add-data "feeder.png;." --icon=gatito.ico main.py
 ```
+This will create an executable in the dist folder.
 
-## Usage
+## 🕹️ Usage and Controls
 Upon running, the cat will appear on your screen and start following your mouse. You can change its behavior via the system tray menu.
 
-### Controls
 - **Right-click on the tray icon** to switch modes or exit the program.
 - **Left-click and drag** the cat when in wait/chill mode.
 
-## Customization
-To use a different sprite or icon, replace the `oneko.gif` or `gatito.ico` files with your own.
+## 🎨 Customization
+Want a different look? Replace these files with your own images:
 
-## License
+- oneko.gif (cat sprite)
+- gatito.ico (icon)
+- feeder.png (feeder)
+⚠️ Ensure images maintain the correct dimensions (e.g., the sprite sheet should be 256×128 pixels).
+
+## 📜 License
 This project is open-source and available under the MIT License.
 
 ---
