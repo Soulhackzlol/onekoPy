@@ -20,26 +20,78 @@ def get_resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+class Feeder(QLabel):
+    """
+    Draggable feeder window.
+    """
+    def __init__(self):
+        super().__init__()
+        # Borderless, always-on-top, transparent
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+
+        feeder_path = get_resource_path("feeder.png")
+        print("[FEEDER] Loading from:", feeder_path)
+
+        self.feederImage = QPixmap(feeder_path)
+        if self.feederImage.isNull():
+            print("[FEEDER] WARNING: Null pixmap. Check file name and path.")
+        else:
+            print("[FEEDER] Feeder image loaded successfully!")
+
+        self.feederSize = 42
+        self.setFixedSize(self.feederSize, self.feederSize)
+
+        # Scale the feeder image
+        scaledFeeder = self.feederImage.scaled(
+            self.feederSize, self.feederSize,
+            Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
+        self.setPixmap(scaledFeeder)
+
+        self.move(400, 400)
+        self.dragging = False
+        self.dragOffset = QPoint(0, 0)
+
+        self.show()
+        print("[FEEDER] Feeder spawned and shown at (400, 400)")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.dragging = True
+            self.dragOffset = event.pos()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self.dragging:
+            newPos = event.globalPos() - self.dragOffset
+            self.move(newPos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.dragging = False
+            event.accept()
+
 class DesktopCat(QLabel):
     """
-    Displays a floating cat on the desktop with multiple modes:
-      - follow: Follows the mouse pointer
-      - wait: Remains stationary (sleeping) but can be dragged
-      - chill: Mostly remains stationary, but occasionally moves slightly
-    Debug logs are included for troubleshooting.
+    The oneko-like cat with modes:
+      - follow: follows the mouse
+      - wait: stays in place (sleeping)
+      - chill: spawns a feeder and, every 5 minutes, moves to eat, then returns.
     """
     def __init__(self):
         super().__init__()
 
-        self.debug = False  # Enable/disable debug logging
+        self.debug = False  # Set to True to see console logs
 
-        # Configure a borderless, always-on-top, transparent window
+        # Borderless, always-on-top, transparent
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         if self.debug:
             print("[INIT] Window configured (borderless, always on top, transparent)")
 
-        # Load the sprite sheet (oneko.gif, 256×128, 8×4 frames)
+        # Load sprite sheet
         sprite_path = get_resource_path("oneko.gif")
         self.spriteSheet = QPixmap(sprite_path)
         self.spriteSize = 32
@@ -47,27 +99,30 @@ class DesktopCat(QLabel):
             print(f"[INIT] Loading sprite sheet from: {sprite_path}")
             print(f"[INIT] Sprite sheet dimensions: {self.spriteSheet.width()}x{self.spriteSheet.height()}")
 
-        # Cat state variables
-        self.mode = "follow"   # Options: follow, wait, chill
-        self.dragging = False  # Flag for mouse dragging
-        self.dragOffset = QPoint(0, 0)
-
-        # Initial position (x, y) on screen
+        # Initial cat position
         self.catX = 200
         self.catY = 200
+        self.mode = "follow"   # follow, wait, chill
+        self.dragging = False
+        self.dragOffset = QPoint(0, 0)
         self.lastValidMousePos = (self.catX, self.catY)
-        
-        # oneko logic variables
+
+        # oneko-like logic
         self.frameCount = 0
         self.idleTime = 0
         self.idleAnimation = None
         self.idleAnimationFrame = 0
         self.nekoSpeed = 10
 
-        # For "chill" mode: occasional small movement
-        self.chillCounter = 0
+        # Chill/eating logic
+        self.feeder = None
+        self.eatingTimer = None
+        self.eatingCycleActive = False
+        self.eatingPhase = None  # "move_to_feeder", "eating", "move_to_sleep"
+        self.eatingCounter = 0
+        self.sleepingSpot = (self.catX, self.catY)
 
-        # Sprite sets with negative offsets
+        # Sprites with negative offsets
         self.spriteSets = {
             "idle": [[-3, -3]],
             "alert": [[-7, -3]],
@@ -88,11 +143,11 @@ class DesktopCat(QLabel):
             "NW": [[-1, 0], [-1, -1]],
         }
 
-        # Set initial size and position
+        # Configure initial label size & position
         self.setFixedSize(self.spriteSize, self.spriteSize)
         self.move(self.catX, self.catY)
         if self.debug:
-            print(f"[INIT] Initial cat position: ({self.catX}, {self.catY})")
+            print(f"[INIT] Cat initial position: ({self.catX}, {self.catY})")
 
         # Main timer (10 FPS)
         self.timer = QTimer()
@@ -109,16 +164,64 @@ class DesktopCat(QLabel):
         self.idleAnimation = None
         self.idleAnimationFrame = 0
         self.idleTime = 0
+
         if mode == "chill":
-            self.chillCounter = random.randint(50, 200)
+            # Spawn or show the feeder
+            if self.feeder is None:
+                self.feeder = Feeder()
+                self.feeder.show()
+                if self.debug:
+                    print("[MODE] Feeder spawned and shown")
+            else:
+                self.feeder.show()
+                if self.debug:
+                    print("[MODE] Feeder already exists and is shown")
+
+            # Start an eating timer (5 minutes)
+            if self.eatingTimer is None:
+                self.eatingTimer = QTimer()
+                self.eatingTimer.timeout.connect(self.startEatingCycle)
+                self.eatingTimer.start(300000)  # 5 minutes
+                if self.debug:
+                    print("[MODE] Eating timer started (5-minute interval)")
+        else:
+            # Stop feeder and eating cycle
+            if self.eatingTimer is not None:
+                self.eatingTimer.stop()
+                self.eatingTimer = None
+            if self.feeder is not None:
+                self.feeder.close()
+                self.feeder = None
+            self.eatingCycleActive = False
+            self.eatingPhase = None
+
         if self.debug:
             print(f"[MODE] Mode changed to: {mode}")
 
+    def startEatingCycle(self):
+        """
+        Initiates the eating cycle in chill mode.
+        The cat moves from its current position to the feeder,
+        eats, then returns to the same position.
+        """
+        if self.mode != "chill":
+            return
+        # Store the cat's current position so we can return here afterwards
+        self.sleepingSpot = (self.catX, self.catY)
+
+        if self.debug:
+            print("[EATING] Starting eating cycle from sleepingSpot=", self.sleepingSpot)
+
+        self.eatingCycleActive = True
+        self.eatingPhase = "move_to_feeder"
+        self.eatingCounter = 0
+
     def updateFrame(self):
-        """Called ~10 times per second to update the logic and sprite."""
+        """Called ~10 times per second to update logic and sprite."""
         self.frameCount += 1
         if self.debug:
-            print(f"[FRAME] FrameCount: {self.frameCount}, Mode: {self.mode}")
+            print(f"[FRAME] FrameCount={self.frameCount}, Mode={self.mode}")
+
         if self.mode == "follow":
             self.logicFollow()
         elif self.mode == "wait":
@@ -126,93 +229,80 @@ class DesktopCat(QLabel):
         elif self.mode == "chill":
             self.logicChill()
 
-    # ----------------- MODE LOGIC METHODS -----------------
+    # ----------------- MODE LOGIC ----------------- #
+
     def logicFollow(self):
         """
         Follow mode:
-          - If the mouse is within the screen, the cat pursues it and updates the last valid position.
-          - If the mouse is outside, the cat moves toward the last valid mouse position and, upon reaching it,
-            remains idle until the mouse returns.
+          - If mouse is within screen, cat chases it.
+          - If mouse is out of screen, cat moves to last known position and idles.
         """
         sw, sh = pyautogui.size()
         mx, my = pyautogui.position()
         if self.debug:
-            print(f"[FOLLOW] Mouse position: ({mx}, {my}), Screen: ({sw}, {sh})")
+            print(f"[FOLLOW] Mouse=({mx},{my}), Screen=({sw},{sh})")
         
-        # Update last valid position if the mouse is within the screen
         if 0 <= mx <= sw and 0 <= my <= sh:
             targetX, targetY = mx, my
             self.lastValidMousePos = (mx, my)
         else:
             targetX, targetY = self.lastValidMousePos
             if self.debug:
-                print(f"[FOLLOW] Mouse out of bounds. Using last valid position: {self.lastValidMousePos}")
+                print(f"[FOLLOW] Mouse out of bounds, using last valid pos={self.lastValidMousePos}")
 
         diffX = self.catX - targetX
         diffY = self.catY - targetY
         dist = math.sqrt(diffX**2 + diffY**2)
-        if self.debug:
-            print(f"[FOLLOW] Difference: ({diffX:.1f}, {diffY:.1f}), Distance: {dist:.1f}")
 
-        # If the cat is already close to the target, enter idle mode
         if dist < self.nekoSpeed or dist < 48:
             if self.debug:
-                print("[FOLLOW] Close to target; entering idle mode")
+                print("[FOLLOW] Close to target => doIdle()")
             self.doIdle()
             return
 
+        # Cancel idle animation
         self.idleAnimation = None
         self.idleAnimationFrame = 0
 
+        # Alert animation if idleTime is high
         if self.idleTime > 1:
             self.setSprite("alert", 0)
             self.idleTime = min(self.idleTime, 7)
             self.idleTime -= 1
             return
 
+        # Compute direction
         direction = ""
         if diffY / dist > 0.5:
             direction += "N"
         elif diffY / dist < -0.5:
             direction += "S"
-
         if diffX / dist > 0.5:
             direction += "W"
         elif diffX / dist < -0.5:
             direction += "E"
 
-        if self.debug:
-            print(f"[FOLLOW] Calculated direction: {direction}")
-
         self.setSprite(direction, self.frameCount)
-        # Move towards the target
         self.catX -= (diffX / dist) * self.nekoSpeed
         self.catY -= (diffY / dist) * self.nekoSpeed
 
-        # Ensure the cat remains within the screen bounds
+        # Screen bounds
         self.catX = max(16, min(sw - 16, self.catX))
         self.catY = max(16, min(sh - 16, self.catY))
-        if self.debug:
-            print(f"[FOLLOW] New position: ({self.catX:.1f}, {self.catY:.1f})")
         self.move(int(self.catX), int(self.catY))
 
     def logicWait(self):
-        """
-        Wait mode:
-          - The cat does not pursue the mouse.
-          - It remains in a 'sleeping' (or idle) state.
-          - The user can drag the cat to reposition it.
-        """
+        """Wait mode: cat sleeps, user can drag it."""
         if not self.idleAnimation:
             self.idleAnimation = "sleeping"
             self.idleAnimationFrame = 0
-            if self.debug:
-                print("[WAIT] Activating sleeping animation")
+
         if self.idleAnimation == "sleeping":
             if self.idleAnimationFrame < 8:
                 self.setSprite("tired", 0)
             else:
                 self.setSprite("sleeping", self.idleAnimationFrame // 4)
+
             if self.idleAnimationFrame > 192:
                 self.idleAnimationFrame = 0
             else:
@@ -220,33 +310,100 @@ class DesktopCat(QLabel):
 
     def logicChill(self):
         """
-        Chill mode:
-          - Similar to wait mode (remains asleep), but every X frames it briefly "wakes up"
-            and moves slightly (as if adjusting its position), then returns to sleep.
+        Chill mode: cat sleeps unless an eating cycle is active.
+        Then it moves to the feeder, eats, and returns.
         """
-        if self.chillCounter > 0:
-            self.chillCounter -= 1
-        else:
-            # Brief random movement upon "waking"
-            dx = random.randint(-20, 20)
-            dy = random.randint(-20, 20)
-            self.catX += dx
-            self.catY += dy
-            sw, sh = pyautogui.size()
-            self.catX = max(16, min(sw - 16, self.catX))
-            self.catY = max(16, min(sh - 16, self.catY))
-            self.move(int(self.catX), int(self.catY))
-            if self.debug:
-                print(f"[CHILL] Random movement: dx={dx}, dy={dy}")
-            self.chillCounter = random.randint(50, 200)
+        if self.eatingCycleActive:
+            if self.eatingPhase == "move_to_feeder":
+                if not self.feeder:
+                    # No feeder => abort
+                    self.eatingCycleActive = False
+                    self.eatingPhase = None
+                    return
+
+                feeder_center = (
+                    self.feeder.x() + self.feeder.width() / 2,
+                    self.feeder.y() + self.feeder.height() + 5
+                )
+                diffX = self.catX - feeder_center[0]
+                diffY = self.catY - feeder_center[1]
+                dist = math.sqrt(diffX**2 + diffY**2)
+
+                if dist < self.nekoSpeed or dist < 10:
+                    self.eatingPhase = "eating"
+                    self.eatingCounter = 0
+                else:
+                    self.catX -= (diffX / dist) * self.nekoSpeed
+                    self.catY -= (diffY / dist) * self.nekoSpeed
+                    sw, sh = pyautogui.size()
+                    self.catX = max(16, min(sw - 16, self.catX))
+                    self.catY = max(16, min(sh - 16, self.catY))
+                    self.move(int(self.catX), int(self.catY))
+
+                    # Optional movement sprite
+                    direction = ""
+                    if diffY / dist > 0.5:
+                        direction += "N"
+                    elif diffY / dist < -0.5:
+                        direction += "S"
+                    if diffX / dist > 0.5:
+                        direction += "W"
+                    elif diffX / dist < -0.5:
+                        direction += "E"
+                    self.setSprite(direction, self.frameCount)
+                return
+
+            elif self.eatingPhase == "eating":
+                self.eatingCounter += 1
+                # "scratchSelf" used as a placeholder for eating
+                self.setSprite("scratchSelf", self.eatingCounter)
+
+                # 5 seconds of eating
+                if self.eatingCounter > 50:
+                    self.eatingPhase = "move_to_sleep"
+                return
+
+            elif self.eatingPhase == "move_to_sleep":
+                targetX, targetY = self.sleepingSpot
+                diffX = self.catX - targetX
+                diffY = self.catY - targetY
+                dist = math.sqrt(diffX**2 + diffY**2)
+
+                if dist < self.nekoSpeed or dist < 10:
+                    # Done
+                    self.eatingCycleActive = False
+                    self.eatingPhase = None
+                else:
+                    self.catX -= (diffX / dist) * self.nekoSpeed
+                    self.catY -= (diffY / dist) * self.nekoSpeed
+                    sw, sh = pyautogui.size()
+                    self.catX = max(16, min(sw - 16, self.catX))
+                    self.catY = max(16, min(sh - 16, self.catY))
+                    self.move(int(self.catX), int(self.catY))
+
+                    direction = ""
+                    if diffY / dist > 0.5:
+                        direction += "N"
+                    elif diffY / dist < -0.5:
+                        direction += "S"
+                    if diffX / dist > 0.5:
+                        direction += "W"
+                    elif diffX / dist < -0.5:
+                        direction += "E"
+                    self.setSprite(direction, self.frameCount)
+                return
+
+        # If no eating cycle, cat sleeps in place
         if not self.idleAnimation:
             self.idleAnimation = "sleeping"
             self.idleAnimationFrame = 0
+
         if self.idleAnimation == "sleeping":
             if self.idleAnimationFrame < 8:
                 self.setSprite("tired", 0)
             else:
                 self.setSprite("sleeping", self.idleAnimationFrame // 4)
+
             if self.idleAnimationFrame > 192:
                 self.idleAnimationFrame = 0
             else:
@@ -254,12 +411,11 @@ class DesktopCat(QLabel):
 
     def doIdle(self):
         """
-        Idle behavior for follow mode.
-        Increases idle time and, after a threshold and random chance, activates an idle animation.
+        Idle for follow mode. 
+        If idleTime passes threshold + random chance, pick an idle animation.
         """
         self.idleTime += 1
-        if self.debug:
-            print(f"[IDLE] Idle time: {self.idleTime}")
+
         if self.idleTime > 10 and random.randint(0, 200) == 0 and self.idleAnimation is None:
             sw, sh = pyautogui.size()
             available = ["sleeping", "scratchSelf"]
@@ -271,10 +427,10 @@ class DesktopCat(QLabel):
                 available.append("scratchWallE")
             if self.catY > sh - 32:
                 available.append("scratchWallS")
+
             self.idleAnimation = random.choice(available)
             self.idleAnimationFrame = 0
-            if self.debug:
-                print(f"[IDLE] Activated animation: {self.idleAnimation}")
+
         if self.idleAnimation == "sleeping":
             if self.idleAnimationFrame < 8:
                 self.setSprite("tired", 0)
@@ -285,6 +441,7 @@ class DesktopCat(QLabel):
                 self.idleAnimationFrame = 0
             else:
                 self.idleAnimationFrame += 1
+
         elif self.idleAnimation in (
             "scratchWallN", "scratchWallS",
             "scratchWallE", "scratchWallW", "scratchSelf"
@@ -299,53 +456,40 @@ class DesktopCat(QLabel):
             self.setSprite("idle", 0)
 
     def setSprite(self, name, frame):
-        """
-        Translates the offset (ox, oy) into a real sub-image from the sprite sheet
-        Logs the details if debugging is enabled.
-        """
+        """Crop from sprite sheet based on negative offsets (oneko.js style)."""
         if name not in self.spriteSets:
             name = "idle"
         frames = self.spriteSets[name]
         ox, oy = frames[frame % len(frames)]
         xPix = -ox * self.spriteSize
         yPix = -oy * self.spriteSize
-        if self.debug:
-            print(f"[setSprite] Animation: {name}, Frame: {frame}, Offset: ({ox},{oy}), Crop: ({xPix},{yPix})")
+
         rect = QRect(xPix, yPix, self.spriteSize, self.spriteSize)
         framePix = self.spriteSheet.copy(rect)
         self.setPixmap(framePix)
 
-    # ----------------- DRAGGABLE HANDLING -----------------
+    # ----------------- DRAGGABLE ----------------- #
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.dragging = True
-            # Record the offset of the mouse press relative to the window's top-left
             self.dragOffset = event.pos()
-            if self.debug:
-                print("[DRAG] mousePressEvent - starting drag")
             event.accept()
 
     def mouseMoveEvent(self, event):
-        """Allows the cat to be dragged when in 'wait' or 'chill' mode."""
+        """Allows the cat to be dragged in 'wait' or 'chill' mode."""
         if self.dragging and (self.mode in ["wait", "chill"]):
             globalPos = event.globalPos()
             newX = globalPos.x() - self.dragOffset.x()
             newY = globalPos.y() - self.dragOffset.y()
-            self.catX = newX
-            self.catY = newY
             sw, sh = pyautogui.size()
-            self.catX = max(0, min(sw - self.width(), self.catX))
-            self.catY = max(0, min(sh - self.height(), self.catY))
-            if self.debug:
-                print(f"[DRAG] Moving to ({self.catX}, {self.catY})")
+            self.catX = max(0, min(sw - self.width(), newX))
+            self.catY = max(0, min(sh - self.height(), newY))
             self.move(int(self.catX), int(self.catY))
             event.accept()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.dragging = False
-            if self.debug:
-                print("[DRAG] mouseReleaseEvent - ending drag")
             event.accept()
 
 # ----------------------------------------------------------------
@@ -357,19 +501,16 @@ def main():
     else:
         print("[MAIN] Running in development mode")
 
-    # Create the "pet" (the cat)
     cat = DesktopCat()
 
-    # Create the system tray icon using a local icon (for Windows)
     trayIconPath = get_resource_path("gatito.ico")
     trayIcon = QSystemTrayIcon(QIcon(trayIconPath), parent=app)
     if trayIcon.icon().isNull():
         print("[MAIN] Warning: Tray icon failed to load from:", trayIconPath)
     else:
         print(f"[MAIN] Tray icon loaded from: {trayIconPath}")
-    trayMenu = QMenu()
 
-    # Actions for the tray menu
+    trayMenu = QMenu()
     followAction = QAction("Follow")
     waitAction = QAction("Wait")
     chillAction = QAction("Chill")
@@ -389,7 +530,7 @@ def main():
     trayIcon.setContextMenu(trayMenu)
     trayIcon.show()
     print("[MAIN] Tray icon displayed")
-    
+
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
